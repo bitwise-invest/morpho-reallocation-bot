@@ -1,90 +1,53 @@
+import { config } from "dotenv";
 import { createConfig, factory } from "ponder";
-import { type AbiEvent, getAbiItem, http } from "viem";
-
-import { chainConfig, chainConfigs } from "@morpho-blue-reallocation-bot/config";
+import { getAbiItem } from "viem";
+import { base } from "viem/chains";
 
 import { adaptiveCurveIrmAbi } from "./abis/AdaptiveCurveIrm";
 import { metaMorphoAbi } from "./abis/MetaMorpho";
 import { metaMorphoFactoryAbi } from "./abis/MetaMorphoFactory";
 import { morphoBlueAbi } from "./abis/MorphoBlue";
 
-const configs = Object.values(chainConfigs).map((config) => chainConfig(config.chain.id));
-
-const networks = Object.fromEntries(
-  configs.map((config) => [
-    config.chain.name,
-    {
-      chainId: config.chain.id,
-      transport: http(config.rpcUrl),
-    },
-  ]),
-);
+config();
 
 export default createConfig({
-  networks,
+  chains: {
+    [base.id]: {
+      ...base,
+      rpc: process.env.RPC_URL_8453 ?? base.rpcUrls.default.http[0],
+    },
+  },
   contracts: {
     Morpho: {
       abi: morphoBlueAbi,
-      network: Object.fromEntries(
-        configs.map((config) => [
-          config.chain.name,
-          {
-            address: config.morpho.address,
-            startBlock: config.morpho.startBlock,
-          },
-        ]),
-      ) as Record<
-        keyof typeof networks,
-        {
-          readonly address: `0x${string}`;
-          readonly startBlock: number;
-        }
-      >,
-    },
-    MetaMorpho: {
-      abi: metaMorphoAbi,
-      network: Object.fromEntries(
-        configs.map((config) => [
-          config.chain.name,
-          {
-            address: factory({
-              address: config.metaMorphoFactories.addresses,
-              event: getAbiItem({ abi: metaMorphoFactoryAbi, name: "CreateMetaMorpho" }),
-              parameter: "metaMorpho",
-            }),
-            startBlock: config.metaMorphoFactories.startBlock,
-          },
-        ]),
-      ) as Record<
-        keyof typeof networks,
-        {
-          readonly address: Factory<
-            Extract<
-              (typeof metaMorphoFactoryAbi)[number],
-              { type: "event"; name: "CreateMetaMorpho" }
-            >
-          >;
-          readonly startBlock: number;
-        }
-      >,
+      chain: {
+        [base.id]: {
+          address: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
+          startBlock: 13977148,
+        },
+      },
     },
     AdaptiveCurveIRM: {
       abi: adaptiveCurveIrmAbi,
-      network: Object.fromEntries(
-        configs.map((config) => [
-          config.chain.name,
-          {
-            address: config.adaptiveCurveIrm.address,
-            startBlock: config.adaptiveCurveIrm.startBlock,
-          },
-        ]),
-      ) as Record<
-        keyof typeof networks,
-        {
-          readonly address: `0x${string}`;
-          readonly startBlock: number;
-        }
-      >,
+      chain: {
+        [base.id]: {
+          address: "0x46415998764C29aB2a25CbeA6254146D50D22687",
+          startBlock: 13977152,
+        },
+      },
+    },
+    MetaMorpho: {
+      abi: metaMorphoAbi,
+      chain: {
+        [base.id]: {
+          address: factory({
+            address: "0xA9c3D3a366466Fa809d1Ae982Fb2c46E5fC41101",
+            event: getAbiItem({ abi: metaMorphoFactoryAbi, name: "CreateMetaMorpho" }),
+            parameter: "metaMorpho",
+          }),
+          startBlock: 13978134,
+        },
+      },
     },
   },
   database: {
@@ -93,9 +56,3 @@ export default createConfig({
       process.env.POSTGRES_DATABASE_URL ?? "postgres://ponder:ponder@localhost:5433/ponder",
   },
 });
-
-interface Factory<event extends AbiEvent = AbiEvent> {
-  address: `0x${string}` | readonly `0x${string}`[];
-  event: event;
-  parameter: Exclude<event["inputs"][number]["name"], undefined>;
-}
