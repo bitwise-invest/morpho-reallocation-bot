@@ -33,12 +33,37 @@ export class ReallocationBot {
   async run() {
     const { client } = this;
     const { vaultWhitelist } = this;
-    const vaultsData = await Promise.all(
+    const vaultsData = await Promise.allSettled(
       vaultWhitelist.map((vault) => fetchVaultData(this.chainId, vault)),
     );
 
+    // Filter out failed fetches (vaults not indexed yet)
+    const successfulVaults = vaultsData
+      .filter(
+        (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof fetchVaultData>>> =>
+          result.status === "fulfilled",
+      )
+      .map((result) => result.value);
+
+    // Log warnings for vaults that couldn't be fetched
+    vaultsData.forEach((result, index) => {
+      if (result.status === "rejected") {
+        const vaultAddress = vaultWhitelist[index];
+        if (vaultAddress) {
+          console.warn(
+            `⚠️  Vault ${vaultAddress} not found in database. It may not be indexed yet or doesn't exist.`,
+          );
+        }
+      }
+    });
+
+    if (successfulVaults.length === 0) {
+      console.log("No vaults available for reallocation");
+      return;
+    }
+
     await Promise.all(
-      vaultsData.map(async (vaultData) => {
+      successfulVaults.map(async (vaultData) => {
         const reallocation = await this.strategy.findReallocation(vaultData);
 
         if (!reallocation) return;
