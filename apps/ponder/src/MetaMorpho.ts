@@ -6,13 +6,13 @@ ponder.on("MetaMorpho:SetWithdrawQueue", async ({ event, context }) => {
     .insert(vault)
     .values({
       // primary key
-      chainId: context.chain.id,
+      chainId: context.network.chainId,
       address: event.log.address,
 
       // `WithdrawQueue`
       withdrawQueue: [...event.args.newWithdrawQueue],
     })
-    .onConflictDoUpdate(() => ({
+    .onConflictDoUpdate({
       withdrawQueue: [...event.args.newWithdrawQueue],
-    }));
+    });
 });

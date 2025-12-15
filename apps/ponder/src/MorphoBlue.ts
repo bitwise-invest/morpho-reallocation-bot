@@ -8,7 +8,7 @@ ponder.on("Morpho:CreateMarket", async ({ event, context }) => {
   // so we can insert without any `onConflict` handling.
   await context.db.insert(market).values({
     // primary key
-    chainId: context.chain.id,
+    chainId: context.network.chainId,
     id: event.args.id,
     // `MarketParams` struct
     loanToken: event.args.marketParams.loanToken,
@@ -25,7 +25,7 @@ ponder.on("Morpho:SetFee", async ({ event, context }) => {
   // Row must exist because `SetFee` cannot preceed `CreateMarket`.
   await context.db
     .update(market, {
-      chainId: context.chain.id,
+      chainId: context.network.chainId,
       id: event.args.id,
     })
     .set({ fee: event.args.newFee });
@@ -35,7 +35,7 @@ ponder.on("Morpho:AccrueInterest", async ({ event, context }) => {
   // Row must exist because `AccrueInterest` cannot preceed `CreateMarket`.
   await context.db
     .update(market, {
-      chainId: context.chain.id,
+      chainId: context.network.chainId,
       id: event.args.id,
     })
     .set((row) => ({
@@ -49,16 +49,18 @@ ponder.on("Morpho:AccrueInterest", async ({ event, context }) => {
 ponder.on("Morpho:Supply", async ({ event, context }) => {
   await Promise.all([
     // Row must exist because `Supply` cannot preceed `CreateMarket`.
-    context.db.update(market, { chainId: context.chain.id, id: event.args.id }).set((row) => ({
-      totalSupplyAssets: row.totalSupplyAssets + event.args.assets,
-      totalSupplyShares: row.totalSupplyShares + event.args.shares,
-    })),
+    context.db
+      .update(market, { chainId: context.network.chainId, id: event.args.id })
+      .set((row) => ({
+        totalSupplyAssets: row.totalSupplyAssets + event.args.assets,
+        totalSupplyShares: row.totalSupplyShares + event.args.shares,
+      })),
     // Row may or may not exist because `Supply` could be `user`'s first action.
     context.db
       .insert(position)
       .values({
         // primary key
-        chainId: context.chain.id,
+        chainId: context.network.chainId,
         marketId: event.args.id,
         user: event.args.onBehalf,
         // `Position` struct (unspecified fields default to 0n)
@@ -73,14 +75,16 @@ ponder.on("Morpho:Supply", async ({ event, context }) => {
 ponder.on("Morpho:Withdraw", async ({ event, context }) => {
   await Promise.all([
     // Row must exist because `Withdraw` cannot preceed `CreateMarket`.
-    context.db.update(market, { chainId: context.chain.id, id: event.args.id }).set((row) => ({
-      totalSupplyAssets: row.totalSupplyAssets - event.args.assets,
-      totalSupplyShares: row.totalSupplyShares - event.args.shares,
-    })),
+    context.db
+      .update(market, { chainId: context.network.chainId, id: event.args.id })
+      .set((row) => ({
+        totalSupplyAssets: row.totalSupplyAssets - event.args.assets,
+        totalSupplyShares: row.totalSupplyShares - event.args.shares,
+      })),
     // Row must exist because `Withdraw` cannot preceed `Supply`.
     context.db
       .update(position, {
-        chainId: context.chain.id,
+        chainId: context.network.chainId,
         marketId: event.args.id,
         user: event.args.onBehalf,
       })
@@ -94,7 +98,7 @@ ponder.on("Morpho:SupplyCollateral", async ({ event, context }) => {
     .insert(position)
     .values({
       // primary key
-      chainId: context.chain.id,
+      chainId: context.network.chainId,
       marketId: event.args.id,
       user: event.args.onBehalf,
       // `Position` struct (unspecified fields default to 0n)
@@ -109,7 +113,7 @@ ponder.on("Morpho:WithdrawCollateral", async ({ event, context }) => {
   // Row must exist because `WithdrawCollateral` cannot preceed `SupplyCollateral`.
   await context.db
     .update(position, {
-      chainId: context.chain.id,
+      chainId: context.network.chainId,
       marketId: event.args.id,
       user: event.args.onBehalf,
     })
@@ -119,14 +123,16 @@ ponder.on("Morpho:WithdrawCollateral", async ({ event, context }) => {
 ponder.on("Morpho:Borrow", async ({ event, context }) => {
   await Promise.all([
     // Row must exist because `Borrow` cannot preceed `CreateMarket`.
-    context.db.update(market, { chainId: context.chain.id, id: event.args.id }).set((row) => ({
-      totalBorrowAssets: row.totalBorrowAssets + event.args.assets,
-      totalBorrowShares: row.totalBorrowShares + event.args.shares,
-    })),
+    context.db
+      .update(market, { chainId: context.network.chainId, id: event.args.id })
+      .set((row) => ({
+        totalBorrowAssets: row.totalBorrowAssets + event.args.assets,
+        totalBorrowShares: row.totalBorrowShares + event.args.shares,
+      })),
     // Row must exist because `Borrow` cannot preceed `SupplyCollateral`.
     context.db
       .update(position, {
-        chainId: context.chain.id,
+        chainId: context.network.chainId,
         marketId: event.args.id,
         user: event.args.onBehalf,
       })
@@ -137,14 +143,16 @@ ponder.on("Morpho:Borrow", async ({ event, context }) => {
 ponder.on("Morpho:Repay", async ({ event, context }) => {
   await Promise.all([
     // Row must exist because `Repay` cannot preceed `CreateMarket`.
-    context.db.update(market, { chainId: context.chain.id, id: event.args.id }).set((row) => ({
-      totalBorrowAssets: row.totalBorrowAssets - event.args.assets,
-      totalBorrowShares: row.totalBorrowShares - event.args.shares,
-    })),
+    context.db
+      .update(market, { chainId: context.network.chainId, id: event.args.id })
+      .set((row) => ({
+        totalBorrowAssets: row.totalBorrowAssets - event.args.assets,
+        totalBorrowShares: row.totalBorrowShares - event.args.shares,
+      })),
     // Row must exist because `Repay` cannot preceed `SupplyCollateral`.
     context.db
       .update(position, {
-        chainId: context.chain.id,
+        chainId: context.network.chainId,
         marketId: event.args.id,
         user: event.args.onBehalf,
       })
@@ -155,19 +163,22 @@ ponder.on("Morpho:Repay", async ({ event, context }) => {
 ponder.on("Morpho:Liquidate", async ({ event, context }) => {
   await Promise.all([
     // Row must exist because `Liquidate` cannot preceed `CreateMarket`.
-    context.db.update(market, { chainId: context.chain.id, id: event.args.id }).set((row) => ({
-      totalSupplyAssets: row.totalSupplyAssets - event.args.badDebtAssets,
-      totalSupplyShares: row.totalSupplyShares - event.args.badDebtShares,
-      totalBorrowAssets: zeroFloorSub(
-        row.totalBorrowAssets,
-        event.args.repaidAssets + event.args.badDebtAssets,
-      ),
-      totalBorrowShares: row.totalBorrowShares - event.args.repaidShares - event.args.badDebtShares,
-    })),
+    context.db
+      .update(market, { chainId: context.network.chainId, id: event.args.id })
+      .set((row) => ({
+        totalSupplyAssets: row.totalSupplyAssets - event.args.badDebtAssets,
+        totalSupplyShares: row.totalSupplyShares - event.args.badDebtShares,
+        totalBorrowAssets: zeroFloorSub(
+          row.totalBorrowAssets,
+          event.args.repaidAssets + event.args.badDebtAssets,
+        ),
+        totalBorrowShares:
+          row.totalBorrowShares - event.args.repaidShares - event.args.badDebtShares,
+      })),
     // Row must exist because `Liquidate` cannot preceed `SupplyCollateral`.
     context.db
       .update(position, {
-        chainId: context.chain.id,
+        chainId: context.network.chainId,
         marketId: event.args.id,
         user: event.args.borrower,
       })
