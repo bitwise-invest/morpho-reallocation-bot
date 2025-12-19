@@ -1,4 +1,4 @@
-import { base } from "viem/chains";
+import { base, unichain } from "viem/chains";
 
 import type { Config } from "./types";
 
@@ -19,6 +19,22 @@ export const chainConfigs: Record<number, Config> = {
         "0xA9c3D3a366466Fa809d1Ae982Fb2c46E5fC41101",
       ],
       startBlock: 13978134,
+    },
+  },
+  [unichain.id]: {
+    chain: unichain,
+    morpho: {
+      address: "0x8f5ae9CddB9f68de460C77730b018Ae7E04a140A",
+      startBlock: 9139027,
+    },
+    adaptiveCurveIrm: {
+      address: "0x9a6061d51743B31D2c3Be75D83781Fa423f53F0E",
+      startBlock: 9139027,
+    },
+    // Done
+    metaMorphoFactories: {
+      addresses: ["0xe9EdE3929F43a7062a007C3e8652e4ACa610Bdc0"],
+      startBlock: 9316789,
     },
   },
 };
