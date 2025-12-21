@@ -1,3 +1,3 @@
-import { base, Chain, mainnet } from "viem/chains";
+import { base, Chain } from "viem/chains";
 
-export const chains: Chain[] = [mainnet, base];
+export const chains: Chain[] = [base];

@@ -1,4 +1,9 @@
+import {
+  DEFAULT_MIN_UTILIZATION_DELTA_BIPS,
+  vaultsMinUtilizationDeltaBips,
+} from "@morpho-blue-reallocation-bot/config";
 import { Address, maxUint256, zeroAddress } from "viem";
+
 import {
   getDepositableAmount,
   getWithdrawableAmount,
@@ -8,16 +13,14 @@ import {
 } from "../../utils/maths";
 import { MarketAllocation, VaultData } from "../../utils/types";
 import { Strategy } from "../strategy";
-import {
-  DEFAULT_MIN_UTILIZATION_DELTA_BIPS,
-  vaultsMinUtilizationDeltaBips,
-} from "@morpho-blue-reallocation-bot/config";
 
 export class EquilizeUtilizations implements Strategy {
   findReallocation(vaultData: VaultData) {
     const marketsData = vaultData.marketsData.filter(
       (marketData) => marketData.params.collateralToken !== zeroAddress,
     );
+
+    // TODO: We need to add logic that first splits the capital in the vault by ratio of totalSupplyAssets across markets
 
     const targetUtilization = wDivDown(
       marketsData.reduce((acc, marketData) => acc + marketData.state.totalBorrowAssets, 0n),
@@ -44,6 +47,9 @@ export class EquilizeUtilizations implements Strategy {
         this.getMinUtilizationDeltaBips(marketData.chainId, marketData.id);
     }
 
+    // Why take the min and not handle them separately?
+    //   A constraint of the market, one can only deposit what you withdraw, and you
+    //   can only withdraw what you can deposit. Taking the minimum ensures a balanced reallocation.
     const toReallocate = min(totalWithdrawableAmount, totalDepositableAmount);
 
     if (toReallocate === 0n || !didExceedMinUtilizationDelta) return;
