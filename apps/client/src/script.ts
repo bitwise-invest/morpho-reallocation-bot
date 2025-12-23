@@ -1,7 +1,9 @@
 import { chainConfig, chains } from "@morpho-blue-reallocation-bot/config";
+
 import { launchBot } from ".";
 
-async function run() {
+function run() {
+  console.log("Launching Allocator Bot...");
   const configs = chains.map((chain) => chainConfig(chain));
 
   try {
@@ -15,4 +17,4 @@ async function run() {
   }
 }
 
-void run();
+run();
