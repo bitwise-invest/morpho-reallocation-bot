@@ -1,3 +1,4 @@
+import { DEFAULT_MIN_CAPITAL_DELTA_PERCENT } from "@morpho-blue-reallocation-bot/config";
 import { maxUint256, zeroAddress } from "viem";
 
 import { VaultData } from "../../utils/types";
@@ -28,8 +29,22 @@ export class EqualizeCapital implements Strategy {
     // Calculate target for each market and delta (change needed)
     const deltas = marketsData.map((marketData, i) => {
       const target = targetAllocation + (i < Number(remainder) ? 1n : 0n);
-      return { marketData, target, delta: target - marketData.vaultAssets };
+      const delta = target - marketData.vaultAssets;
+      const deltaAsPctOfTarget = Math.abs(Number(delta) / Number(targetAllocation));
+      return { marketData, target, delta, deltaAsPctOfTarget };
     });
+
+    const aboveMinThreshold = deltas.some(
+      (d) => d.deltaAsPctOfTarget >= DEFAULT_MIN_CAPITAL_DELTA_PERCENT,
+    );
+
+    if (!aboveMinThreshold) {
+      const maxDeltaPct = Math.max(...deltas.map((d) => d.deltaAsPctOfTarget));
+      console.log(
+        `Delta: ${(maxDeltaPct * 100).toFixed(6)}% (Target allocation: ${targetAllocation.toString()}) is below minimum threshold: ${(DEFAULT_MIN_CAPITAL_DELTA_PERCENT * 100).toFixed(2)}%`,
+      );
+      return [];
+    }
 
     console.log(
       `Deltas: ${deltas.map((delta) => `${delta.marketData.id}: ${delta.delta.toString()}`).join(", ")}`,
