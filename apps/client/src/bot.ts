@@ -6,12 +6,13 @@ import {
   type Client,
   type Transport,
 } from "viem";
-import { estimateGas, writeContract } from "viem/actions";
+import { estimateGas, simulateContract, writeContract } from "viem/actions";
 
 import { metaMorphoAbi } from "../abis/MetaMorpho.js";
 
 import { Strategy } from "./strategies/strategy.js";
 import { fetchVaultData } from "./utils/fetchers.js";
+import { bigIntReplacer } from "./utils/json.js";
 
 export class ReallocationBot {
   private chainId: number;
@@ -31,46 +32,35 @@ export class ReallocationBot {
   }
 
   async run() {
+    console.log(`Running bot on chain ${this.chainId.toString()}`);
+
     const { client } = this;
-    const { vaultWhitelist } = this;
-    const vaultsData = await Promise.allSettled(
-      vaultWhitelist.map((vault) => fetchVaultData(this.chainId, vault)),
-    );
-
-    // Filter out failed fetches (vaults not indexed yet)
-    const successfulVaults = vaultsData
-      .filter(
-        (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof fetchVaultData>>> =>
-          result.status === "fulfilled",
-      )
-      .map((result) => result.value);
-
-    // Log warnings for vaults that couldn't be fetched
-    vaultsData.forEach((result, index) => {
-      if (result.status === "rejected") {
-        const vaultAddress = vaultWhitelist[index];
-        if (vaultAddress) {
-          console.warn(
-            `⚠️  Vault ${vaultAddress} not found in database. It may not be indexed yet or doesn't exist.`,
-          );
-        }
-      }
-    });
-
-    if (successfulVaults.length === 0) {
-      console.log("No vaults available for reallocation");
-      return;
-    }
+    const vaultsData = await fetchVaultData(this.chainId, this.vaultWhitelist);
 
     await Promise.all(
-      successfulVaults.map(async (vaultData) => {
+      vaultsData.map(async (vaultData) => {
         const reallocation = await this.strategy.findReallocation(vaultData);
+        console.log(`Reallocation:`, JSON.stringify(reallocation, bigIntReplacer, 2));
 
         if (!reallocation) return;
 
         try {
-          /// TX SIMULATION
+          /// TX SIMULATION - Use simulateContract to get better error messages
+          try {
+            await simulateContract(client, {
+              address: vaultData.vaultAddress,
+              abi: metaMorphoAbi,
+              functionName: "reallocate",
+              args: [reallocation],
+            });
+            console.log(`✓ Simulation passed for ${vaultData.vaultAddress}`);
+          } catch (simError) {
+            // simulateContract provides better error messages
+            console.error(`✗ Simulation failed for ${vaultData.vaultAddress}:`, simError);
+            throw simError; // Re-throw to skip gas estimation and execution
+          }
 
+          // Gas estimation
           const populatedTx = {
             to: vaultData.vaultAddress,
             data: encodeFunctionData({
@@ -81,10 +71,10 @@ export class ReallocationBot {
             value: 0n, // TODO: find a way to get encoder value
           };
 
-          await estimateGas(client, populatedTx);
+          const gasEstimate = await estimateGas(client, populatedTx);
+          console.log(`Gas estimate: ${gasEstimate.toString()}`);
 
           // TX EXECUTION
-
           await writeContract(client, {
             address: vaultData.vaultAddress,
             abi: metaMorphoAbi,
@@ -92,10 +82,9 @@ export class ReallocationBot {
             args: [reallocation],
           });
 
-          console.log(`Reallocated on ${vaultData.vaultAddress}`);
+          console.info(`Reallocated on ${vaultData.vaultAddress}`);
         } catch (error) {
-          console.log(`Failed to reallocate on ${vaultData.vaultAddress}`);
-          console.error("reallocation error", error);
+          console.error(`Failed to reallocate on ${vaultData.vaultAddress}:`, error);
         }
       }),
     );

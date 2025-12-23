@@ -59,7 +59,7 @@ function getWithdrawalToUtilization(marketState: MarketState, targetUtilization:
 function getDepositToUtilization(marketState: MarketState, targetUtilization: bigint) {
   return wMulDown(
     marketState.totalSupplyAssets,
-    wDivDown(getUtilization(marketState), targetUtilization) - WAD,
+    wDivDown(getUtilization(marketState), targetUtilization) - WAD, // (currUtilization / targetUtilization) - 1
   );
 }
 
@@ -72,8 +72,8 @@ export function getWithdrawableAmount(marketData: VaultMarketData, targetUtiliza
 
 export function getDepositableAmount(marketData: VaultMarketData, targetUtilization: bigint) {
   return min(
-    getDepositToUtilization(marketData.state, targetUtilization),
-    marketData.cap - marketData.vaultAssets,
+    getDepositToUtilization(marketData.state, targetUtilization), // How much we CAN deposit
+    marketData.cap - marketData.vaultAssets, // How much we're ALLOWED to deposit
   );
 }
 

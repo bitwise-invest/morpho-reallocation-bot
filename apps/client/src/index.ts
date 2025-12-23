@@ -3,7 +3,7 @@ import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { ReallocationBot } from "./bot";
-import { EquilizeUtilizations } from "./strategies";
+import { EqualizeCapital } from "./strategies/equalizeCapital";
 
 export const launchBot = (config: ChainConfig) => {
   const client = createWalletClient({
@@ -12,12 +12,12 @@ export const launchBot = (config: ChainConfig) => {
     account: privateKeyToAccount(config.reallocatorPrivateKey),
   });
 
-  const bot = new ReallocationBot(
-    config.chainId,
-    client,
-    config.vaultWhitelist,
-    new EquilizeUtilizations(),
-  );
+  const strategy = new EqualizeCapital();
+
+  console.log(`Client created: ${client.account.address}`);
+  console.log(`Strategy created`);
+
+  const bot = new ReallocationBot(config.chainId, client, config.vaultWhitelist, strategy);
 
   // Run on startup.
   void bot.run();
