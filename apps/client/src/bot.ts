@@ -42,7 +42,10 @@ export class ReallocationBot {
         const reallocation = await this.strategy.findReallocation(vaultData);
         console.log(`Reallocation:`, JSON.stringify(reallocation, bigIntReplacer, 2));
 
-        if (!reallocation) return;
+        if (!reallocation || reallocation.length === 0) {
+          console.log(`No reallocation needed for ${vaultData.vaultAddress}`);
+          return;
+        }
 
         try {
           /// TX SIMULATION - Use simulateContract to get better error messages
