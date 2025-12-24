@@ -1,82 +1,129 @@
 import { DEFAULT_MIN_CAPITAL_DELTA_PERCENT } from "@morpho-blue-reallocation-bot/config";
 import { maxUint256, zeroAddress } from "viem";
 
-import { VaultData } from "../../utils/types";
+import { VaultData, VaultMarketData } from "../../utils/types";
 import { Strategy } from "../strategy";
 
 export class EqualizeCapital implements Strategy {
   findReallocation(vaultData: VaultData) {
-    const marketsData = vaultData.marketsData.filter(
+    // Split marketsData into non-idle markets and idle market
+    const nonIdleMarkets = vaultData.marketsData.filter(
       (marketData) => marketData.params.collateralToken !== zeroAddress,
     );
+    const idleMarketData = vaultData.marketsData.find(
+      (marketData) => marketData.params.collateralToken === zeroAddress,
+    );
 
-    const totalCapital = marketsData.reduce((acc, marketData) => acc + marketData.vaultAssets, 0n);
-    const numMarkets = BigInt(marketsData.length);
+    // Check if ALL non-idle markets are at their supply caps
+    const allMarketsAtCap = nonIdleMarkets.every(
+      (marketData) => marketData.vaultAssets >= marketData.cap,
+    );
+
+    if (allMarketsAtCap) {
+      console.log(
+        "All non-idle markets have reached their allocation caps. No reallocation needed.",
+      );
+      return [];
+    }
+
+    // Calculate total capital across ALL markets (including idle)
+    const totalCapital = vaultData.marketsData.reduce(
+      (acc, marketData) => acc + marketData.vaultAssets,
+      0n,
+    );
+    const numMarkets = BigInt(nonIdleMarkets.length);
 
     console.log(`Total capital: ${totalCapital.toString()}`);
-    console.log(`Number of markets: ${numMarkets.toString()}`);
+    console.log(`Number of non-idle markets: ${numMarkets.toString()}`);
 
     if (numMarkets === 0n || totalCapital === 0n) {
       return [];
     }
 
+    // Compute equal allocation per non-idle market
     const targetAllocation = totalCapital / numMarkets;
     const remainder = totalCapital % numMarkets;
 
-    console.log(`Target allocation: ${targetAllocation.toString()}`);
+    console.log(`Target allocation per non-idle market: ${targetAllocation.toString()}`);
     console.log(`Remainder: ${remainder.toString()}`);
 
-    // Calculate target for each market and delta (change needed)
-    const deltas = marketsData.map((marketData, i) => {
-      const target = targetAllocation + (i < Number(remainder) ? 1n : 0n);
-      const delta = target - marketData.vaultAssets;
-      const deltaAsPctOfTarget = Math.abs(Number(delta) / Number(targetAllocation));
-      return { marketData, target, delta, deltaAsPctOfTarget };
+    // Calculate target for each market, respecting supply caps
+    let excessCapital = 0n;
+    const marketAllocations = nonIdleMarkets.map((marketData, i) => {
+      // Distribute remainder across first N markets (1 unit each)
+      let proposedAllocation = targetAllocation + (i < Number(remainder) ? 1n : 0n);
+
+      // Check if proposed allocation exceeds supply cap
+      if (proposedAllocation > marketData.cap) {
+        excessCapital += proposedAllocation - marketData.cap;
+        proposedAllocation = marketData.cap;
+        console.log(
+          `Market ${marketData.id}: Capped at ${marketData.cap.toString()} (proposed was ${(targetAllocation + (i < Number(remainder) ? 1n : 0n)).toString()})`,
+        );
+      }
+
+      const delta = proposedAllocation - marketData.vaultAssets;
+      return { marketData, target: proposedAllocation, delta };
     });
 
-    const aboveMinThreshold = deltas.some(
-      (d) => d.deltaAsPctOfTarget >= DEFAULT_MIN_CAPITAL_DELTA_PERCENT,
+    console.log(
+      `Market allocations: ${marketAllocations.map((m) => `${m.marketData.id}: (current: ${m.marketData.vaultAssets.toString()}, target: ${m.target.toString()}, delta: ${m.delta.toString()})`).join(", ")}`,
     );
+    console.log(`Excess capital to route to idle market: ${excessCapital.toString()}`);
 
-    if (!aboveMinThreshold) {
-      const maxDeltaPct = Math.max(...deltas.map((d) => d.deltaAsPctOfTarget));
+    // Build final allocations list
+    interface AllocationEntry {
+      marketData: VaultMarketData;
+      delta: bigint;
+    }
+    const allAllocations: AllocationEntry[] = [...marketAllocations];
+
+    // Idle market target is excessCapital (whatever couldn't fit in non-idle markets)
+    // This means: if no markets are capped, idle should go to 0
+    // If some markets are capped, idle gets the excess
+    if (idleMarketData) {
+      const idleTarget = excessCapital;
+      const idleDelta = idleTarget - idleMarketData.vaultAssets;
+      if (idleDelta !== 0n) {
+        allAllocations.push({
+          marketData: idleMarketData,
+          delta: idleDelta,
+        });
+        console.log(
+          `Idle market: current=${idleMarketData.vaultAssets.toString()}, target=${idleTarget.toString()}, delta=${idleDelta.toString()}`,
+        );
+      }
+    }
+
+    // Calculate total absolute delta as percentage of total capital
+    // Only reallocate if we're moving at least DEFAULT_MIN_CAPITAL_DELTA_PERCENT of total capital
+    const totalAbsoluteDelta = allAllocations.reduce(
+      (sum, alloc) => sum + (alloc.delta > 0n ? alloc.delta : -alloc.delta),
+      0n,
+    );
+    // Divide by 2 because each unit moved creates two deltas (one negative, one positive)
+    const capitalBeingMoved = totalAbsoluteDelta / 2n;
+    const deltaAsPctOfTotal = (Number(capitalBeingMoved) / Number(totalCapital)) * 100;
+
+    if (deltaAsPctOfTotal < DEFAULT_MIN_CAPITAL_DELTA_PERCENT) {
       console.log(
-        `Delta: ${(maxDeltaPct * 100).toFixed(6)}% (Target allocation: ${targetAllocation.toString()}) is below minimum threshold: ${(DEFAULT_MIN_CAPITAL_DELTA_PERCENT * 100).toFixed(2)}%`,
+        `Capital movement: ${deltaAsPctOfTotal.toFixed(4)}% of total capital is below the minimum threshold of ${DEFAULT_MIN_CAPITAL_DELTA_PERCENT.toFixed(2)}%. No reallocation needed.`,
       );
       return [];
     }
 
-    console.log(
-      `Deltas: ${deltas.map((delta) => `${delta.marketData.id}: ${delta.delta.toString()}`).join(", ")}`,
-    );
-
-    // Sum all deltas - should be 0 (capital is conserved), but rounding may cause imbalance
-    const totalDelta = deltas.reduce((sum, { delta }) => sum + delta, 0n);
-
-    console.log(`totalDelta: ${totalDelta.toString()}`);
-
-    // Fix rounding imbalance by adjusting the last market's delta
-    if (totalDelta !== 0n && deltas.length > 0) {
-      const lastDelta = deltas[deltas.length - 1];
-      if (lastDelta) {
-        lastDelta.delta -= totalDelta;
-      }
-    }
-
-    // Convert to allocations: only include markets with non-zero deltas
-    // Contract expects `assets` = target = current + delta
-    // IMPORTANT: Sort so withdrawals (negative delta) come BEFORE supplies (positive delta)
+    // Sort so withdrawals (negative delta) come BEFORE supplies (positive delta)
     // This is required because MORPHO.supply() does a transferFrom, which needs the vault
     // to have idle tokens first (obtained from withdrawals)
-    const sortedDeltas = deltas
+    const sortedAllocations = allAllocations
       .filter(({ delta }) => delta !== 0n)
-      .sort((a, b) => (a.delta < b.delta ? -1 : a.delta > b.delta ? 1 : 0)); // negative deltas first
+      .sort((a, b) => (a.delta < b.delta ? -1 : a.delta > b.delta ? 1 : 0));
 
     // For the LAST supply (positive delta), use maxUint256 to tell the contract
     // to supply whatever was actually withdrawn. This handles interest accrual
     // between data fetch and tx execution, avoiding InconsistentReallocation errors.
-    const allocations = sortedDeltas.map(({ marketData, delta }, index) => {
-      const isLastSupply = delta > 0n && index === sortedDeltas.length - 1;
+    const allocations = sortedAllocations.map(({ marketData, delta }, index) => {
+      const isLastSupply = delta > 0n && index === sortedAllocations.length - 1;
       return {
         marketParams: marketData.params,
         assets: isLastSupply ? maxUint256 : marketData.vaultAssets + delta,
@@ -84,7 +131,7 @@ export class EqualizeCapital implements Strategy {
     });
 
     console.log(
-      `Allocations: ${allocations.map((allocation) => `${allocation.marketParams.collateralToken}: ${allocation.assets.toString()}`).join(", ")}`,
+      `Final allocations: ${allocations.map((allocation) => `${allocation.marketParams.collateralToken}: ${allocation.assets.toString()}`).join(", ")}`,
     );
 
     return allocations;
