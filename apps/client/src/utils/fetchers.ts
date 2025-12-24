@@ -37,7 +37,7 @@ export async function fetchVaultData(
               market.collateralAsset?.address ?? "0x0000000000000000000000000000000000000000",
             oracle: market.oracle?.address ?? "0x0000000000000000000000000000000000000000",
             irm: market.irmAddress,
-            lltv: market.lltv,
+            lltv: BigInt(market.lltv as unknown as number),
           },
           state: {
             totalSupplyAssets: BigInt(market.state?.supplyAssets ?? "0"),
@@ -47,8 +47,8 @@ export async function fetchVaultData(
             lastUpdate: BigInt(market.state?.timestamp ?? "0"),
             fee: BigInt(market.state?.fee ?? "0"),
           },
-          cap: allocation.supplyCap,
-          vaultAssets: allocation.supplyAssets,
+          cap: BigInt(allocation.supplyCap as unknown as number),
+          vaultAssets: BigInt(allocation.supplyAssets as unknown as number),
           rateAtTarget: BigInt(market.state?.rateAtTarget ?? "0"),
         };
       });
